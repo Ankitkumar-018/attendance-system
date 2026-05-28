@@ -110,4 +110,17 @@ router.post('/:id/regenerate-qr', protect, async (req, res) => {
   res.json({ success: true, qrCode: lecture.qrCode });
 });
 
+// POST /api/lectures/regenerate-all-qr — fix all QRs with correct base URL
+router.post('/regenerate-all-qr', protect, async (req, res) => {
+  const lectures = await Lecture.find({});
+  let updated = 0;
+  for (const lecture of lectures) {
+    const attendanceUrl = `${process.env.ATTENDANCE_BASE_URL}/mark-attendance/${lecture.lectureId}`;
+    lecture.qrCode = await QRCode.toDataURL(attendanceUrl, { width: 400, margin: 2 });
+    await lecture.save();
+    updated++;
+  }
+  res.json({ success: true, message: `${updated} QR codes regenerated with correct URL` });
+});
+
 module.exports = router;
