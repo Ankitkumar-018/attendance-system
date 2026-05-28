@@ -114,7 +114,18 @@ export default function MarkAttendance() {
         <Typography variant="body2" color="text.secondary">This lecture does not exist.</Typography>
       </Box>
     );
-    if (lectureStatus === 'not_started' || lectureStatus === 'closed') return (
+    if (lectureStatus === 'not_started') return (
+      <Box sx={{ textAlign: 'center', py: 6 }}>
+        <HourglassEmpty sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
+        <Typography variant="h6" fontWeight={700} color="warning.dark">
+          Lecture Not Started Yet
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Attendance opens at {lecture?.startTime} on {new Date(lecture?.date).toLocaleDateString()}
+        </Typography>
+      </Box>
+    );
+    if (lectureStatus === 'closed') return (
       <Box sx={{ textAlign: 'center', py: 6 }}>
         <LockClock sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
         <Typography variant="h6" fontWeight={700} color="error.main">
