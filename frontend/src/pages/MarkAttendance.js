@@ -7,6 +7,8 @@ import { QrCode2, CheckCircle, Person, Cancel, HourglassEmpty, LockClock } from 
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 
+const BASE_URL = process.env.REACT_APP_API_URL || '/api';
+
 const steps = ['Scan QR', 'Find Your Record', 'Confirm Identity', 'Done'];
 
 // Generate or retrieve a persistent device ID
@@ -36,7 +38,7 @@ export default function MarkAttendance() {
   const deviceId = getDeviceId();
 
   useEffect(() => {
-    axios.get(`/api/lectures/public/${lectureId}`)
+    axios.get(`${BASE_URL}/lectures/public/${lectureId}`)
       .then(res => {
         setLecture(res.data.lecture);
         setLectureStatus(res.data.lecture.windowStatus);
@@ -58,7 +60,7 @@ export default function MarkAttendance() {
     setError('');
     setLoading(true);
     try {
-      const res = await axios.post('/api/attendance/find-student', { identifier, lectureId, deviceId });
+      const res = await axios.post(`${BASE_URL}/attendance/find-student`, { identifier, lectureId, deviceId });
       setStudent(res.data.student);
       setStep(2);
     } catch (err) {
@@ -80,7 +82,7 @@ export default function MarkAttendance() {
     setLoading(true);
     setError('');
     try {
-      await axios.post('/api/attendance/mark', { lectureId, studentCode: student.studentCode, location, deviceId });
+      await axios.post(`${BASE_URL}/attendance/mark`, { lectureId, studentCode: student.studentCode, location, deviceId });
       setSuccess(true);
       setMarkedFor({ name: student.name, studentCode: student.studentCode, course: student.course, attendanceTime: new Date() });
       setStep(3);
