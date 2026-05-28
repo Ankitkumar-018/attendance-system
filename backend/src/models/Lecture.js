@@ -18,8 +18,10 @@ const lectureSchema = new mongoose.Schema({
 lectureSchema.pre('save', async function (next) {
   if (!this.lectureId) {
     const dateStr = new Date(this.date).toISOString().slice(0, 10).replace(/-/g, '');
-    const count = await mongoose.model('Lecture').countDocuments();
-    this.lectureId = `LEC_${dateStr}_${String(count + 1).padStart(3, '0')}`;
+    // Use timestamp + random to guarantee uniqueness
+    const suffix = Date.now().toString(36).slice(-4).toUpperCase();
+    const rand = Math.random().toString(36).slice(-2).toUpperCase();
+    this.lectureId = `LEC_${dateStr}_${suffix}${rand}`;
   }
   next();
 });
