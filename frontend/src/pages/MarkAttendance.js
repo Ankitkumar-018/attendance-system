@@ -114,21 +114,14 @@ export default function MarkAttendance() {
         <Typography variant="body2" color="text.secondary">This lecture does not exist.</Typography>
       </Box>
     );
-    if (lectureStatus === 'not_started') return (
-      <Box sx={{ textAlign: 'center', py: 6 }}>
-        <HourglassEmpty sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
-        <Typography variant="h6" fontWeight={600}>Lecture Not Started Yet</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Attendance opens at {lecture?.startTime} on {new Date(lecture?.date).toLocaleDateString()}
-        </Typography>
-      </Box>
-    );
-    if (lectureStatus === 'closed') return (
+    if (lectureStatus === 'not_started' || lectureStatus === 'closed') return (
       <Box sx={{ textAlign: 'center', py: 6 }}>
         <LockClock sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
-        <Typography variant="h6" fontWeight={600}>Attendance Window Closed</Typography>
-        <Typography variant="body2" color="text.secondary">
-          The {lecture?.attendanceWindowMinutes}-minute attendance window has ended.
+        <Typography variant="h6" fontWeight={700} color="error.main">
+          Attendance for this lecture is closed
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Please contact your faculty for assistance.
         </Typography>
       </Box>
     );
