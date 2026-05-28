@@ -1,1 +1,12 @@
-/* /index.html 200
+# React Router — all routes go to index.html
+/dashboard              /index.html    200
+/students               /index.html    200
+/lectures               /index.html    200
+/lectures/create        /index.html    200
+/attendance             /index.html    200
+/analytics              /index.html    200
+/login                  /index.html    200
+/mark-attendance/*      /index.html    200
+
+# Fallback — catch all remaining routes
+/*                      /index.html    200
