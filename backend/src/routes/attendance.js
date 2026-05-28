@@ -230,6 +230,34 @@ router.get('/export/lecture/:lectureId', protect, async (req, res) => {
   }
 });
 
+// GET /api/attendance/export/lecture/:lectureId/csv — tab separated
+router.get('/export/lecture/:lectureId/csv', protect, async (req, res) => {
+  try {
+    const lecture = await Lecture.findOne({ lectureId: req.params.lectureId });
+    if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
+
+    const present = await Attendance.find({ lectureId: req.params.lectureId }).sort({ studentCode: 1 });
+    const presentCodes = present.map(a => a.studentCode);
+    const absent = await Student.find({ course: lecture.course, studentCode: { $nin: presentCodes } }).sort({ studentCode: 1 });
+
+    const header = ['Student Code', 'Name', 'Email', 'Phone', 'Course', 'Status', 'Time'].join('\t');
+    const presentRows = present.map(a =>
+      [a.studentCode, a.studentName, a.email, a.phoneNumber || '', a.course, 'Present', new Date(a.attendanceTime).toLocaleString('en-IN')].join('\t')
+    );
+    const absentRows = absent.map(s =>
+      [s.studentCode, s.name, s.email, s.phoneNumber || '', s.course, 'Absent', '-'].join('\t')
+    );
+
+    const csv = [header, ...presentRows, ...absentRows].join('\n');
+
+    res.setHeader('Content-Disposition', `attachment; filename=${req.params.lectureId}_attendance.tsv`);
+    res.setHeader('Content-Type', 'text/tab-separated-values; charset=utf-8');
+    res.send('﻿' + csv); // BOM for Excel compatibility
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET /api/attendance/export/lecture/:lectureId/pdf
 router.get('/export/lecture/:lectureId/pdf', protect, async (req, res) => {
   try {

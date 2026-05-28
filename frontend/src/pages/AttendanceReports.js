@@ -38,8 +38,33 @@ export default function AttendanceReports() {
 
   const filteredLectures = courseFilter ? lectures.filter(l => l.course === courseFilter) : lectures;
 
-  const handleExcelExport = () => window.open(`/api/attendance/export/lecture/${selectedLecture}`, '_blank');
-  const handlePDFExport = () => window.open(`/api/attendance/export/lecture/${selectedLecture}/pdf`, '_blank');
+  const BASE_URL = process.env.REACT_APP_API_URL || '/api';
+
+  const handleDownload = async (url, filename) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(link.href);
+    } catch (err) {
+      alert('Download failed. Please try again.');
+    }
+  };
+
+  const handleCSVExport = () => handleDownload(
+    `${BASE_URL}/attendance/export/lecture/${selectedLecture}/csv`,
+    `${selectedLecture}_attendance.tsv`
+  );
+  const handlePDFExport = () => handleDownload(
+    `${BASE_URL}/attendance/export/lecture/${selectedLecture}/pdf`,
+    `${selectedLecture}_attendance.pdf`
+  );
 
   return (
     <Box>
@@ -104,7 +129,7 @@ export default function AttendanceReports() {
                   <Typography variant="caption" color="text.secondary">{reportData.lecture?.course} · {reportData.lecture?.facultyName} · {new Date(reportData.lecture?.date).toLocaleDateString()}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button size="small" variant="outlined" startIcon={<Download />} onClick={handleExcelExport}>Excel</Button>
+                  <Button size="small" variant="outlined" startIcon={<Download />} onClick={handleCSVExport}>CSV</Button>
                   <Button size="small" variant="outlined" startIcon={<PictureAsPdf />} onClick={handlePDFExport}>PDF</Button>
                 </Box>
               </Box>
