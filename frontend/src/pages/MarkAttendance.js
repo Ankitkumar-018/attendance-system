@@ -86,6 +86,8 @@ export default function MarkAttendance() {
       setSuccess(true);
       setMarkedFor({ name: student.name, studentCode: student.studentCode, course: student.course, attendanceTime: new Date() });
       setStep(3);
+      // Redirect to Masai School after 3 seconds
+      setTimeout(() => { window.location.href = 'https://www.masaischool.com'; }, 3000);
     } catch (err) {
       const data = err.response?.data || {};
       if (data.alreadyMarked || data.deviceBlocked) {
