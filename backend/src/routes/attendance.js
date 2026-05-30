@@ -181,10 +181,11 @@ router.get('/lecture/:lectureId', protect, async (req, res) => {
     const lecture = await Lecture.findOne({ lectureId: req.params.lectureId });
     if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
 
+    const isCommon = lecture.course === 'Common Session';
     const present = await Attendance.find({ lectureId: req.params.lectureId }).sort({ attendanceTime: 1 });
-    const totalStudents = await Student.countDocuments({ course: lecture.course });
+    const totalStudents = await Student.countDocuments(isCommon ? {} : { course: lecture.course });
     const presentCodes = present.map(a => a.studentCode);
-    const absentStudents = await Student.find({ course: lecture.course, studentCode: { $nin: presentCodes } });
+    const absentStudents = await Student.find({ ...(isCommon ? {} : { course: lecture.course }), studentCode: { $nin: presentCodes } });
 
     res.json({ success: true, lecture, present, absentStudents, stats: { total: totalStudents, present: present.length, absent: absentStudents.length, percentage: totalStudents ? ((present.length / totalStudents) * 100).toFixed(1) : 0 } });
   } catch (err) {
@@ -210,9 +211,10 @@ router.get('/export/lecture/:lectureId', protect, async (req, res) => {
     const lecture = await Lecture.findOne({ lectureId: req.params.lectureId });
     if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
 
+    const isCommonExport = lecture.course === 'Common Session';
     const present = await Attendance.find({ lectureId: req.params.lectureId });
     const presentCodes = present.map(a => a.studentCode);
-    const absent = await Student.find({ course: lecture.course, studentCode: { $nin: presentCodes } });
+    const absent = await Student.find({ ...(isCommonExport ? {} : { course: lecture.course }), studentCode: { $nin: presentCodes } });
 
     const rows = [
       ...present.map(a => ({ 'Student Code': a.studentCode, Name: a.studentName, Email: a.email, Course: a.course, Status: 'Present', Time: new Date(a.attendanceTime).toLocaleString() })),
@@ -236,9 +238,10 @@ router.get('/export/lecture/:lectureId/csv', protect, async (req, res) => {
     const lecture = await Lecture.findOne({ lectureId: req.params.lectureId });
     if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
 
+    const isCommon = lecture.course === 'Common Session';
     const present = await Attendance.find({ lectureId: req.params.lectureId }).sort({ studentCode: 1 });
     const presentCodes = present.map(a => a.studentCode);
-    const absent = await Student.find({ course: lecture.course, studentCode: { $nin: presentCodes } }).sort({ studentCode: 1 });
+    const absent = await Student.find({ ...(isCommon ? {} : { course: lecture.course }), studentCode: { $nin: presentCodes } }).sort({ studentCode: 1 });
 
     const header = ['Student Code', 'Name', 'Email', 'Phone', 'Course', 'Status', 'Time'].join('\t');
     const presentRows = present.map(a =>

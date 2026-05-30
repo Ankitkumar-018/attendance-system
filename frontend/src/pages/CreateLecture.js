@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, TextField, Button, Select, MenuItem, FormControl, InputLabel, Grid, Alert, Divider } from '@mui/material';
+import { Box, Typography, Card, CardContent, TextField, Button, Select, MenuItem, FormControl, InputLabel, Grid, Alert, Divider, Chip } from '@mui/material';
 import { ArrowBack, QrCode2, Download } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -83,6 +83,12 @@ export default function CreateLecture() {
                 <FormControl fullWidth required>
                   <InputLabel>Course</InputLabel>
                   <Select value={form.course} label="Course" onChange={e => setForm(p => ({ ...p, course: e.target.value }))}>
+                    <MenuItem value="Common Session">
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <span>🌐</span> <strong>Common Session (All Batches)</strong>
+                      </Box>
+                    </MenuItem>
+                    <Divider />
                     {courses.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
                   </Select>
                 </FormControl>
