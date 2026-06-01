@@ -193,6 +193,37 @@ router.get('/lecture/:lectureId', protect, async (req, res) => {
   }
 });
 
+// POST /api/attendance/mark-manual — admin manually marks a student present
+router.post('/mark-manual', protect, async (req, res) => {
+  try {
+    const { lectureId, studentCode } = req.body;
+    const lecture = await Lecture.findOne({ lectureId });
+    if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
+    const student = await Student.findOne({ studentCode });
+    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
+
+    const existing = await Attendance.findOne({ lectureId, studentCode });
+    if (existing) return res.status(409).json({ success: false, message: 'Already marked present' });
+
+    const attendance = await Attendance.create({
+      lectureId,
+      lecture: lecture._id,
+      studentCode,
+      student: student._id,
+      studentName: student.name,
+      email: student.email,
+      phoneNumber: student.phoneNumber,
+      course: student.course,
+      attendanceStatus: 'present',
+      attendanceTime: new Date(),
+      browserInfo: 'Manual — marked by admin',
+    });
+    res.status(201).json({ success: true, attendance });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET /api/attendance/student/:studentCode — admin
 router.get('/student/:studentCode', protect, async (req, res) => {
   try {

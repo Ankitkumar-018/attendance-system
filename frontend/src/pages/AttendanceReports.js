@@ -2,9 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Typography, Card, CardContent, Select, MenuItem, FormControl, InputLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip,
-  Button, Grid, CircularProgress, Alert, Divider, Tabs, Tab
+  Button, Grid, CircularProgress, Alert, Divider, Tabs, Tab, Tooltip, IconButton
 } from '@mui/material';
-import { Download, PictureAsPdf } from '@mui/icons-material';
+import { Download, PictureAsPdf, HowToReg } from '@mui/icons-material';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 
@@ -17,6 +17,7 @@ export default function AttendanceReports() {
   const [tab, setTab] = useState(0);
   const [courses, setCourses] = useState([]);
   const [courseFilter, setCourseFilter] = useState('');
+  const [markingId, setMarkingId] = useState(null);
 
   useEffect(() => {
     api.get('/students/courses').then(r => setCourses(r.data.courses));
@@ -65,6 +66,41 @@ export default function AttendanceReports() {
     `${BASE_URL}/attendance/export/lecture/${selectedLecture}/pdf`,
     `${selectedLecture}_attendance.pdf`
   );
+
+  const handleMarkPresent = async (student) => {
+    if (!window.confirm(`Mark ${student.name} as Present?`)) return;
+    setMarkingId(student._id);
+    try {
+      await api.post('/attendance/mark-manual', {
+        lectureId: selectedLecture,
+        studentCode: student.studentCode
+      });
+      // Move student from absent to present list locally
+      setReportData(prev => ({
+        ...prev,
+        present: [...prev.present, {
+          _id: student._id,
+          studentCode: student.studentCode,
+          studentName: student.name,
+          email: student.email,
+          course: student.course,
+          attendanceTime: new Date(),
+          browserInfo: 'Manual — marked by admin'
+        }],
+        absentStudents: prev.absentStudents.filter(s => s._id !== student._id),
+        stats: {
+          ...prev.stats,
+          present: prev.stats.present + 1,
+          absent: prev.stats.absent - 1,
+          percentage: (((prev.stats.present + 1) / prev.stats.total) * 100).toFixed(1)
+        }
+      }));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to mark present');
+    } finally {
+      setMarkingId(null);
+    }
+  };
 
   return (
     <Box>
@@ -149,6 +185,7 @@ export default function AttendanceReports() {
                       <TableCell sx={{ fontWeight: 700, bgcolor: '#f8fafc' }}>Email</TableCell>
                       <TableCell sx={{ fontWeight: 700, bgcolor: '#f8fafc' }}>Status</TableCell>
                       {tab === 0 && <TableCell sx={{ fontWeight: 700, bgcolor: '#f8fafc' }}>Time</TableCell>}
+                      {tab === 1 && <TableCell sx={{ fontWeight: 700, bgcolor: '#f8fafc' }}>Action</TableCell>}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -159,7 +196,13 @@ export default function AttendanceReports() {
                         <TableCell>{a.studentName}</TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{a.email}</Typography></TableCell>
                         <TableCell><Chip label="Present" size="small" color="success" /></TableCell>
-                        <TableCell><Typography variant="caption">{new Date(a.attendanceTime).toLocaleTimeString()}</Typography></TableCell>
+                        <TableCell>
+                          <Typography variant="caption">
+                            {new Date(a.attendanceTime).toLocaleTimeString()}
+                            {a.browserInfo === 'Manual — marked by admin' &&
+                              <Chip label="Manual" size="small" sx={{ ml: 1, fontSize: 10 }} color="warning" variant="outlined" />}
+                          </Typography>
+                        </TableCell>
                       </TableRow>
                     ))}
                     {tab === 1 && reportData.absentStudents.map((s, i) => (
@@ -169,6 +212,18 @@ export default function AttendanceReports() {
                         <TableCell>{s.name}</TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{s.email}</Typography></TableCell>
                         <TableCell><Chip label="Absent" size="small" color="error" /></TableCell>
+                        <TableCell>
+                          <Tooltip title="Mark as Present">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              disabled={markingId === s._id}
+                              onClick={() => handleMarkPresent(s)}
+                            >
+                              <HowToReg fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
                       </TableRow>
                     ))}
                     {((tab === 0 && reportData.present.length === 0) || (tab === 1 && reportData.absentStudents.length === 0)) && (
