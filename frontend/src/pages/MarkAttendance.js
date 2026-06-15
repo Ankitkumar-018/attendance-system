@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Card, CardContent, Typography, TextField, Button, Alert,
-  CircularProgress, Avatar, Divider, Chip, Stepper, Step, StepLabel
+  CircularProgress, Avatar, Divider, Chip, Stepper, Step, StepLabel,
+  Rating, FormHelperText
 } from '@mui/material';
-import { QrCode2, CheckCircle, Person, Cancel, HourglassEmpty, LockClock } from '@mui/icons-material';
+import {
+  QrCode2, CheckCircle, Person, Cancel, HourglassEmpty, LockClock,
+  RateReview, Star
+} from '@mui/icons-material';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 
 const BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
-const steps = ['Scan QR', 'Find Your Record', 'Confirm Identity', 'Done'];
-
-// Generate or retrieve a persistent device ID
 const getDeviceId = () => {
   let id = localStorage.getItem('deviceId');
   if (!id) {
@@ -21,32 +22,41 @@ const getDeviceId = () => {
   return id;
 };
 
+const RATING_LABELS = { 1: 'Poor', 2: 'Fair', 3: 'Average', 4: 'Good', 5: 'Excellent' };
+
 export default function MarkAttendance() {
   const { lectureId } = useParams();
-  const [step, setStep] = useState(0);
+  const deviceId = getDeviceId();
+
+  // phase: 'loading' | 'not_found' | 'not_started' | 'closed' | 'find' | 'feedback' | 'confirm' | 'done'
+  const [phase, setPhase] = useState('loading');
   const [lecture, setLecture] = useState(null);
-  const [lectureStatus, setLectureStatus] = useState('loading');
-  const [identifier, setIdentifier] = useState('');
   const [student, setStudent] = useState(null);
+  const [identifier, setIdentifier] = useState('');
+  const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Feedback form
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [ratingError, setRatingError] = useState('');
+  const [commentError, setCommentError] = useState('');
+
+  // Done state
   const [success, setSuccess] = useState(false);
   const [alreadyMarked, setAlreadyMarked] = useState(false);
-  const [deviceBlocked, setDeviceBlocked] = useState(false);
   const [markedFor, setMarkedFor] = useState(null);
-  const [location, setLocation] = useState(null);
-  const deviceId = getDeviceId();
 
   useEffect(() => {
     axios.get(`${BASE_URL}/lectures/public/${lectureId}`)
       .then(res => {
         setLecture(res.data.lecture);
-        setLectureStatus(res.data.lecture.windowStatus);
-        if (res.data.lecture.windowStatus === 'open') setStep(1);
+        const status = res.data.lecture.windowStatus;
+        setPhase(status === 'open' ? 'find' : status);
       })
-      .catch(() => setLectureStatus('not_found'));
+      .catch(() => setPhase('not_found'));
 
-    // Optionally get location
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -62,16 +72,50 @@ export default function MarkAttendance() {
     try {
       const res = await axios.post(`${BASE_URL}/attendance/find-student`, { identifier, lectureId, deviceId });
       setStudent(res.data.student);
-      setStep(2);
+      if (res.data.feedbackRequired && !res.data.feedbackSubmitted) {
+        setPhase('feedback');
+      } else {
+        setPhase('confirm');
+      }
     } catch (err) {
       const data = err.response?.data || {};
       if (data.alreadyMarked || data.deviceBlocked) {
         setAlreadyMarked(true);
-        setDeviceBlocked(!!data.deviceBlocked);
         if (data.markedFor) setMarkedFor(data.markedFor);
-        setStep(3);
+        setPhase('done');
       } else {
         setError(data.message || 'Student not found');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitFeedback = async (e) => {
+    e.preventDefault();
+    let valid = true;
+    if (!rating) { setRatingError('Please rate the class (1–5)'); valid = false; }
+    else setRatingError('');
+    if (!comment.trim()) { setCommentError('Please share your session feedback'); valid = false; }
+    else setCommentError('');
+    if (!valid) return;
+
+    setLoading(true);
+    setError('');
+    try {
+      await axios.post(`${BASE_URL}/feedback/submit`, {
+        lectureId,
+        studentCode: student.studentCode,
+        rating,
+        comment: comment.trim()
+      });
+      setPhase('confirm');
+    } catch (err) {
+      const data = err.response?.data || {};
+      if (data.alreadySubmitted) {
+        setPhase('confirm');
+      } else {
+        setError(data.message || 'Failed to submit feedback. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -85,16 +129,17 @@ export default function MarkAttendance() {
       await axios.post(`${BASE_URL}/attendance/mark`, { lectureId, studentCode: student.studentCode, location, deviceId });
       setSuccess(true);
       setMarkedFor({ name: student.name, studentCode: student.studentCode, course: student.course, attendanceTime: new Date() });
-      setStep(3);
-      // Redirect to Masai School after 3 seconds
+      setPhase('done');
       setTimeout(() => { window.location.href = 'https://www.masaischool.com'; }, 3000);
     } catch (err) {
       const data = err.response?.data || {};
       if (data.alreadyMarked || data.deviceBlocked) {
         setAlreadyMarked(true);
-        setDeviceBlocked(!!data.deviceBlocked);
         if (data.markedFor) setMarkedFor(data.markedFor);
-        setStep(3);
+        setPhase('done');
+      } else if (data.feedbackRequired) {
+        setError('Please submit your feedback first.');
+        setPhase('feedback');
       } else {
         setError(data.message || 'Failed to mark attendance');
       }
@@ -103,34 +148,38 @@ export default function MarkAttendance() {
     }
   };
 
+  const feedbackRequired = !!lecture?.releaseFeedback;
+  const stepperLabels = feedbackRequired
+    ? ['Find Record', 'Feedback', 'Confirm', 'Done']
+    : ['Find Record', 'Confirm', 'Done'];
+  const activeStep = feedbackRequired
+    ? ({ find: 0, feedback: 1, confirm: 2, done: 3 }[phase] ?? 0)
+    : ({ find: 0, confirm: 1, done: 2 }[phase] ?? 0);
+
+  const isOpenPhase = ['find', 'feedback', 'confirm', 'done'].includes(phase);
+
   const renderStatus = () => {
-    if (lectureStatus === 'loading') return (
-      <Box sx={{ textAlign: 'center', py: 6 }}><CircularProgress /></Box>
-    );
-    if (lectureStatus === 'not_found') return (
+    if (phase === 'loading') return <Box sx={{ textAlign: 'center', py: 6 }}><CircularProgress /></Box>;
+    if (phase === 'not_found') return (
       <Box sx={{ textAlign: 'center', py: 6 }}>
         <Cancel sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
         <Typography variant="h6" fontWeight={600}>Invalid QR Code</Typography>
         <Typography variant="body2" color="text.secondary">This lecture does not exist.</Typography>
       </Box>
     );
-    if (lectureStatus === 'not_started') return (
+    if (phase === 'not_started') return (
       <Box sx={{ textAlign: 'center', py: 6 }}>
         <HourglassEmpty sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
-        <Typography variant="h6" fontWeight={700} color="warning.dark">
-          Lecture Not Started Yet
-        </Typography>
+        <Typography variant="h6" fontWeight={700} color="warning.dark">Lecture Not Started Yet</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Attendance opens at {lecture?.startTime} on {new Date(lecture?.date).toLocaleDateString()}
         </Typography>
       </Box>
     );
-    if (lectureStatus === 'closed') return (
+    if (phase === 'closed') return (
       <Box sx={{ textAlign: 'center', py: 6 }}>
         <LockClock sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
-        <Typography variant="h6" fontWeight={700} color="error.main">
-          Attendance for this lecture is closed
-        </Typography>
+        <Typography variant="h6" fontWeight={700} color="error.main">Attendance for this lecture is closed</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Please contact your faculty for assistance.
         </Typography>
@@ -148,38 +197,52 @@ export default function MarkAttendance() {
     }}>
       <Card sx={{ width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.1)' }}>
         <CardContent sx={{ p: 0 }}>
-          {/* Header */}
           <Box sx={{ bgcolor: '#0f172a', p: 3, borderRadius: '12px 12px 0 0', textAlign: 'center' }}>
             <QrCode2 sx={{ fontSize: 40, color: '#60a5fa', mb: 1 }} />
             <Typography variant="h6" sx={{ color: 'white', fontWeight: 700 }}>Mark Your Attendance</Typography>
             {lecture && (
               <>
                 <Typography variant="body2" sx={{ color: '#94a3b8', mt: 0.5 }}>{lecture.lectureName}</Typography>
-                <Chip label={lecture.course} size="small" sx={{ mt: 1, bgcolor: '#1e3a5f', color: '#93c5fd', fontSize: 11 }} />
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', mt: 1, flexWrap: 'wrap' }}>
+                  <Chip label={lecture.course} size="small" sx={{ bgcolor: '#1e3a5f', color: '#93c5fd', fontSize: 11 }} />
+                  {lecture.releaseFeedback && (
+                    <Chip
+                      icon={<RateReview sx={{ fontSize: '14px !important', color: '#86efac !important' }} />}
+                      label="Feedback Required"
+                      size="small"
+                      sx={{ bgcolor: '#14532d', color: '#86efac', fontSize: 11 }}
+                    />
+                  )}
+                </Box>
               </>
             )}
           </Box>
 
           <Box sx={{ p: 3 }}>
-            {/* Stepper */}
-            {lectureStatus === 'open' && step < 3 && (
-              <Stepper activeStep={step - 1} alternativeLabel sx={{ mb: 3 }}>
-                {['Find Record', 'Confirm', 'Done'].map(label => (
-                  <Step key={label}><StepLabel sx={{ '& .MuiStepLabel-label': { fontSize: 12 } }}>{label}</StepLabel></Step>
+            {isOpenPhase && phase !== 'done' && (
+              <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
+                {stepperLabels.map(label => (
+                  <Step key={label}>
+                    <StepLabel sx={{ '& .MuiStepLabel-label': { fontSize: 11 } }}>{label}</StepLabel>
+                  </Step>
                 ))}
               </Stepper>
             )}
 
-            {/* Non-open statuses */}
-            {lectureStatus !== 'open' && renderStatus()}
+            {!isOpenPhase && renderStatus()}
 
-            {/* Step 1: Find Student */}
-            {lectureStatus === 'open' && step === 1 && (
+            {/* Find student */}
+            {phase === 'find' && (
               <Box component="form" onSubmit={handleFindStudent}>
                 <Typography variant="body1" fontWeight={600} gutterBottom>Enter your registered details</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   Enter your email address or mobile number to find your record.
                 </Typography>
+                {feedbackRequired && (
+                  <Alert severity="info" icon={<RateReview fontSize="small" />} sx={{ mb: 2, fontSize: 13 }}>
+                    You will be asked to submit a short feedback form before marking attendance.
+                  </Alert>
+                )}
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
                 <TextField
                   fullWidth required autoFocus
@@ -195,10 +258,77 @@ export default function MarkAttendance() {
               </Box>
             )}
 
-            {/* Step 2: Confirm Identity */}
-            {lectureStatus === 'open' && step === 2 && student && (
+            {/* Feedback form */}
+            {phase === 'feedback' && student && (
+              <Box component="form" onSubmit={handleSubmitFeedback}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <RateReview color="info" />
+                  <Typography variant="body1" fontWeight={700}>Session Feedback</Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Hi <strong>{student.name}</strong>, please rate today's class before marking your attendance.
+                </Typography>
+
+                {/* Q1: Rating */}
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                    1. Rate your today's class understanding and instructor delivery (1–5)
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5, flexWrap: 'wrap' }}>
+                    <Rating
+                      value={rating}
+                      onChange={(_, val) => { setRating(val); setRatingError(''); }}
+                      size="large"
+                      icon={<Star fontSize="inherit" />}
+                    />
+                    {rating > 0 && (
+                      <Chip
+                        label={RATING_LABELS[rating]}
+                        size="small"
+                        color={rating >= 4 ? 'success' : rating === 3 ? 'warning' : 'error'}
+                      />
+                    )}
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    1 = Poor · 2 = Fair · 3 = Average · 4 = Good · 5 = Excellent
+                  </Typography>
+                  {ratingError && <FormHelperText error sx={{ mt: 0.5 }}>{ratingError}</FormHelperText>}
+                </Box>
+
+                <Divider sx={{ mb: 3 }} />
+
+                {/* Q2: Comment */}
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                    2. How was today's session? *
+                  </Typography>
+                  <TextField
+                    fullWidth multiline rows={3}
+                    placeholder="Share your comments or suggestions about today's class..."
+                    value={comment}
+                    onChange={e => { setComment(e.target.value); setCommentError(''); }}
+                    error={!!commentError}
+                    helperText={commentError}
+                  />
+                </Box>
+
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                <Button fullWidth variant="contained" size="large" type="submit" disabled={loading} color="info">
+                  {loading ? <CircularProgress size={22} color="inherit" /> : 'Submit Feedback & Continue'}
+                </Button>
+              </Box>
+            )}
+
+            {/* Confirm identity */}
+            {phase === 'confirm' && student && (
               <Box>
-                <Typography variant="body1" fontWeight={600} gutterBottom>Is this you?</Typography>
+                {feedbackRequired ? (
+                  <Alert severity="success" icon={<CheckCircle fontSize="small" />} sx={{ mb: 2, fontSize: 13 }}>
+                    Feedback submitted! Now confirm your identity to mark attendance.
+                  </Alert>
+                ) : (
+                  <Typography variant="body1" fontWeight={600} gutterBottom>Is this you?</Typography>
+                )}
                 <Card variant="outlined" sx={{ mb: 3, bgcolor: '#f8fafc' }}>
                   <CardContent sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -225,18 +355,20 @@ export default function MarkAttendance() {
                 </Card>
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Button fullWidth variant="outlined" size="large" startIcon={<Cancel />} onClick={() => { setStep(1); setStudent(null); setIdentifier(''); }}>
+                  <Button fullWidth variant="outlined" size="large" startIcon={<Cancel />}
+                    onClick={() => { setPhase('find'); setStudent(null); setIdentifier(''); setRating(0); setComment(''); }}>
                     Not Me
                   </Button>
-                  <Button fullWidth variant="contained" size="large" startIcon={<Person />} onClick={handleMarkAttendance} disabled={loading} color="success">
+                  <Button fullWidth variant="contained" size="large" startIcon={<Person />}
+                    onClick={handleMarkAttendance} disabled={loading} color="success">
                     {loading ? <CircularProgress size={22} color="inherit" /> : "Yes, It's Me!"}
                   </Button>
                 </Box>
               </Box>
             )}
 
-            {/* Step 3: Result */}
-            {step === 3 && (
+            {/* Done */}
+            {phase === 'done' && (
               <Box sx={{ textAlign: 'center', py: 2 }}>
                 {alreadyMarked ? (
                   <>
@@ -294,23 +426,21 @@ export default function MarkAttendance() {
                         </CardContent>
                       </Card>
                     )}
+                    <Typography variant="caption" color="text.secondary">Redirecting to Masai School...</Typography>
                   </>
                 ) : null}
               </Box>
             )}
           </Box>
 
-          {/* Lecture info footer */}
-          {lecture && lectureStatus === 'open' && (
+          {lecture && ['find', 'feedback', 'confirm'].includes(phase) && (
             <Box sx={{ px: 3, pb: 3 }}>
               <Divider sx={{ mb: 2 }} />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="caption" color="text.secondary">
                   {new Date(lecture.date).toLocaleDateString()} · {lecture.startTime}–{lecture.endTime}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Faculty: {lecture.facultyName}
-                </Typography>
+                <Typography variant="caption" color="text.secondary">Faculty: {lecture.facultyName}</Typography>
               </Box>
             </Box>
           )}

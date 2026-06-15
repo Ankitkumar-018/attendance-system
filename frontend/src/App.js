@@ -14,6 +14,7 @@ import CreateLecture from './pages/CreateLecture';
 import AttendanceReports from './pages/AttendanceReports';
 import Analytics from './pages/Analytics';
 import MarkAttendance from './pages/MarkAttendance';
+import FeedbackDashboard from './pages/FeedbackDashboard';
 
 const theme = createTheme({
   palette: {
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="lectures/create" element={<CreateLecture />} />
         <Route path="attendance" element={<AttendanceReports />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="feedback" element={<FeedbackDashboard />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

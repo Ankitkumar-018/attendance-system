@@ -2,6 +2,7 @@ const express = require('express');
 const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 const Attendance = require('../models/Attendance');
+const Feedback = require('../models/Feedback');
 const Lecture = require('../models/Lecture');
 const Student = require('../models/Student');
 const { protect } = require('../middleware/auth');
@@ -81,7 +82,18 @@ router.post('/find-student', async (req, res) => {
         }
       });
 
-    res.json({ success: true, student: { id: student._id, studentCode: student.studentCode, name: student.name, email: student.email, course: student.course } });
+    let feedbackSubmitted = false;
+    if (lecture.releaseFeedback) {
+      const fb = await Feedback.findOne({ lectureId, studentCode: student.studentCode });
+      feedbackSubmitted = !!fb;
+    }
+
+    res.json({
+      success: true,
+      student: { id: student._id, studentCode: student.studentCode, name: student.name, email: student.email, course: student.course },
+      feedbackRequired: !!lecture.releaseFeedback,
+      feedbackSubmitted
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -113,6 +125,13 @@ router.post('/mark', async (req, res) => {
     const existing = await Attendance.findOne({ lectureId, studentCode });
     if (existing)
       return res.status(409).json({ success: false, message: 'Attendance already marked', alreadyMarked: true });
+
+    // Enforce feedback before attendance when enabled
+    if (lecture.releaseFeedback) {
+      const feedbackExists = await Feedback.findOne({ lectureId, studentCode });
+      if (!feedbackExists)
+        return res.status(403).json({ success: false, message: 'Please submit your feedback before marking attendance', feedbackRequired: true });
+    }
 
     if (deviceId) {
       const deviceUsed = await Attendance.findOne({ lectureId, deviceId });

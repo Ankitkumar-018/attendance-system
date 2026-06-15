@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, TextField, Button, Select, MenuItem, FormControl, InputLabel, Grid, Alert, Divider, Chip } from '@mui/material';
-import { ArrowBack, QrCode2, Download } from '@mui/icons-material';
+import {
+  Box, Typography, Card, CardContent, TextField, Button, Select, MenuItem,
+  FormControl, InputLabel, Grid, Alert, Divider, Chip, FormControlLabel, Switch, Paper
+} from '@mui/material';
+import { ArrowBack, QrCode2, Download, RateReview } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+
+const EMPTY_FORM = {
+  lectureName: '',
+  course: '',
+  facultyName: '',
+  date: new Date().toISOString().slice(0, 10),
+  startTime: '10:00',
+  endTime: '11:00',
+  attendanceWindowMinutes: 15,
+  releaseFeedback: false
+};
 
 export default function CreateLecture() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
-  const [form, setForm] = useState({ lectureName: '', course: '', facultyName: '', date: new Date().toISOString().slice(0, 10), startTime: '10:00', endTime: '11:00', attendanceWindowMinutes: 15 });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [created, setCreated] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,6 +61,9 @@ export default function CreateLecture() {
             <Typography variant="h6" fontWeight={700} gutterBottom>{created.lectureName}</Typography>
             <Typography variant="body2" color="text.secondary" gutterBottom>{created.course}</Typography>
             <Typography variant="body2" fontFamily="monospace" color="primary" gutterBottom>{created.lectureId}</Typography>
+            {created.releaseFeedback && (
+              <Chip icon={<RateReview />} label="Feedback Enabled" color="info" size="small" sx={{ mb: 1 }} />
+            )}
             <Divider sx={{ my: 3 }} />
             <Typography variant="subtitle2" gutterBottom>QR Code for Attendance</Typography>
             <Box sx={{ display: 'inline-block', p: 2, border: '2px solid #e5e7eb', borderRadius: 3, mb: 2 }}>
@@ -57,7 +74,7 @@ export default function CreateLecture() {
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
               <Button variant="contained" startIcon={<Download />} onClick={downloadQR}>Download QR</Button>
-              <Button variant="outlined" onClick={() => { setCreated(null); setForm({ lectureName: '', course: '', facultyName: '', date: new Date().toISOString().slice(0, 10), startTime: '10:00', endTime: '11:00', attendanceWindowMinutes: 15 }); }}>
+              <Button variant="outlined" onClick={() => { setCreated(null); setForm(EMPTY_FORM); }}>
                 Create Another
               </Button>
             </Box>
@@ -107,6 +124,30 @@ export default function CreateLecture() {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField fullWidth required type="number" label="Attendance Window (minutes)" value={form.attendanceWindowMinutes} inputProps={{ min: 1, max: 120 }} onChange={e => setForm(p => ({ ...p, attendanceWindowMinutes: Number(e.target.value) }))} helperText="How long students can mark attendance after lecture starts" />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, display: 'flex', alignItems: 'center', height: '100%' }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.3 }}>
+                      <RateReview fontSize="small" color={form.releaseFeedback ? 'info' : 'disabled'} />
+                      <Typography variant="body2" fontWeight={600}>Release Feedback</Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Students must submit feedback before marking attendance
+                    </Typography>
+                  </Box>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={form.releaseFeedback}
+                        onChange={e => setForm(p => ({ ...p, releaseFeedback: e.target.checked }))}
+                        color="info"
+                      />
+                    }
+                    label=""
+                    sx={{ mr: 0 }}
+                  />
+                </Paper>
               </Grid>
               <Grid item xs={12}>
                 <Button fullWidth variant="contained" size="large" type="submit" disabled={loading} startIcon={<QrCode2 />}>

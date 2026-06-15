@@ -45,6 +45,7 @@ app.use('/api/students', require('./routes/students'));
 app.use('/api/lectures', require('./routes/lectures'));
 app.use('/api/attendance', require('./routes/attendance'));
 app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/feedback', require('./routes/feedback'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 

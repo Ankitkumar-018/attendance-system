@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import {
   Dashboard, People, MenuBook, BarChart, Assessment,
-  QrCode2, Menu, Logout, School
+  QrCode2, Menu, Logout, School, RateReview
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { label: 'Lectures', icon: <MenuBook />, path: '/lectures' },
   { label: 'Attendance', icon: <Assessment />, path: '/attendance' },
   { label: 'Analytics', icon: <BarChart />, path: '/analytics' },
+  { label: 'Feedback', icon: <RateReview />, path: '/feedback' },
 ];
 
 export default function Layout() {

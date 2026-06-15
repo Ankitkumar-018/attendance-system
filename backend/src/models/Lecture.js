@@ -12,6 +12,7 @@ const lectureSchema = new mongoose.Schema({
   qrCode: { type: String },
   isActive: { type: Boolean, default: true },
   forceOpen: { type: Boolean, default: false },
+  releaseFeedback: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }
 }, { timestamps: true });
 
