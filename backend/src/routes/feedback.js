@@ -51,7 +51,53 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// GET /api/feedback/lecture/:lectureId — admin
+// GET /api/feedback/overview — lecture-wise, batch-wise, faculty-wise aggregations (admin)
+router.get('/overview', protect, async (req, res) => {
+  try {
+    const lectures = await Lecture.find({ releaseFeedback: true }).sort({ date: -1 });
+
+    const lectureWise = await Promise.all(lectures.map(async (lec) => {
+      const feedbacks = await Feedback.find({ lectureId: lec.lectureId });
+      const count = feedbacks.length;
+      const totalRatingSum = feedbacks.reduce((s, f) => s + f.rating, 0);
+      const avgRating = count > 0 ? parseFloat((totalRatingSum / count).toFixed(1)) : null;
+      const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      feedbacks.forEach(f => { distribution[f.rating]++; });
+      return { lectureId: lec.lectureId, lectureName: lec.lectureName, course: lec.course, facultyName: lec.facultyName, date: lec.date, startTime: lec.startTime, count, avgRating, distribution, _sum: totalRatingSum };
+    }));
+
+    // Batch-wise — weighted average
+    const batchMap = {};
+    lectureWise.forEach(lec => {
+      if (!batchMap[lec.course]) batchMap[lec.course] = { course: lec.course, totalRatingSum: 0, count: 0, lectureCount: 0 };
+      batchMap[lec.course].lectureCount++;
+      batchMap[lec.course].totalRatingSum += lec._sum;
+      batchMap[lec.course].count += lec.count;
+    });
+    const batchWise = Object.values(batchMap)
+      .map(b => ({ course: b.course, lectureCount: b.lectureCount, count: b.count, avgRating: b.count > 0 ? parseFloat((b.totalRatingSum / b.count).toFixed(1)) : null }))
+      .sort((a, b) => (b.avgRating || 0) - (a.avgRating || 0));
+
+    // Faculty-wise — weighted average
+    const facultyMap = {};
+    lectureWise.forEach(lec => {
+      if (!facultyMap[lec.facultyName]) facultyMap[lec.facultyName] = { facultyName: lec.facultyName, totalRatingSum: 0, count: 0, lectureCount: 0 };
+      facultyMap[lec.facultyName].lectureCount++;
+      facultyMap[lec.facultyName].totalRatingSum += lec._sum;
+      facultyMap[lec.facultyName].count += lec.count;
+    });
+    const facultyWise = Object.values(facultyMap)
+      .map(f => ({ facultyName: f.facultyName, lectureCount: f.lectureCount, count: f.count, avgRating: f.count > 0 ? parseFloat((f.totalRatingSum / f.count).toFixed(1)) : null }))
+      .sort((a, b) => (b.avgRating || 0) - (a.avgRating || 0));
+
+    const clean = lectureWise.map(({ _sum, ...rest }) => rest);
+    res.json({ success: true, lectureWise: clean, batchWise, facultyWise });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/feedback/lecture/:lectureId — full detail (admin)
 router.get('/lecture/:lectureId', protect, async (req, res) => {
   try {
     const lecture = await Lecture.findOne({ lectureId: req.params.lectureId });
@@ -67,6 +113,28 @@ router.get('/lecture/:lectureId', protect, async (req, res) => {
     feedbacks.forEach(f => { distribution[f.rating]++; });
 
     res.json({ success: true, lecture, feedbacks, stats: { count, avgRating, distribution } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/feedback/export/lecture/:lectureId/csv — CSV download (admin)
+router.get('/export/lecture/:lectureId/csv', protect, async (req, res) => {
+  try {
+    const lecture = await Lecture.findOne({ lectureId: req.params.lectureId });
+    if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
+
+    const feedbacks = await Feedback.find({ lectureId: req.params.lectureId }).sort({ studentCode: 1 });
+    const LABELS = { 1: 'Poor', 2: 'Fair', 3: 'Average', 4: 'Good', 5: 'Excellent' };
+
+    const header = ['Student Code', 'Name', 'Email', 'Course', 'Rating', 'Rating Label', 'Comment', 'Submitted At'].join('\t');
+    const rows = feedbacks.map(f =>
+      [f.studentCode, f.studentName, f.email, f.course, f.rating, LABELS[f.rating] || '', f.comment.replace(/[\t\n]/g, ' '), new Date(f.submittedAt).toLocaleString('en-IN')].join('\t')
+    );
+
+    res.setHeader('Content-Disposition', `attachment; filename=${req.params.lectureId}_feedback.tsv`);
+    res.setHeader('Content-Type', 'text/tab-separated-values; charset=utf-8');
+    res.send('﻿' + [header, ...rows].join('\n'));
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -93,16 +161,7 @@ router.get('/daily', protect, async (req, res) => {
         : null;
       const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
       feedbacks.forEach(f => { distribution[f.rating]++; });
-      return {
-        lectureId: lec.lectureId,
-        lectureName: lec.lectureName,
-        course: lec.course,
-        facultyName: lec.facultyName,
-        startTime: lec.startTime,
-        count,
-        avgRating,
-        distribution
-      };
+      return { lectureId: lec.lectureId, lectureName: lec.lectureName, course: lec.course, facultyName: lec.facultyName, startTime: lec.startTime, count, avgRating, distribution };
     }));
 
     const totalFeedback = sessions.reduce((s, ss) => s + ss.count, 0);
@@ -111,14 +170,7 @@ router.get('/daily', protect, async (req, res) => {
       ? parseFloat((sessionsWithFeedback.reduce((s, ss) => s + ss.avgRating, 0) / sessionsWithFeedback.length).toFixed(1))
       : null;
 
-    res.json({
-      success: true,
-      date: dateStr,
-      totalSessions: lectures.length,
-      totalFeedback,
-      overallAvg,
-      sessions
-    });
+    res.json({ success: true, date: dateStr, totalSessions: lectures.length, totalFeedback, overallAvg, sessions });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

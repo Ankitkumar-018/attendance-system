@@ -15,6 +15,7 @@ import AttendanceReports from './pages/AttendanceReports';
 import Analytics from './pages/Analytics';
 import MarkAttendance from './pages/MarkAttendance';
 import FeedbackDashboard from './pages/FeedbackDashboard';
+import FeedbackDetail from './pages/FeedbackDetail';
 
 const theme = createTheme({
   palette: {
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="attendance" element={<AttendanceReports />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="feedback" element={<FeedbackDashboard />} />
+        <Route path="feedback/lecture/:lectureId" element={<FeedbackDetail />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
