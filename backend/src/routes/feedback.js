@@ -51,10 +51,53 @@ router.post('/submit', async (req, res) => {
   }
 });
 
+// GET /api/feedback/faculty?name=...&from=...&to=... — all feedback for one faculty (admin)
+router.get('/faculty', protect, async (req, res) => {
+  try {
+    const { name, from, to } = req.query;
+    if (!name) return res.status(400).json({ success: false, message: 'Faculty name required' });
+
+    const lectureQuery = { facultyName: name, releaseFeedback: true };
+    if (from || to) {
+      lectureQuery.date = {};
+      if (from) { const d = new Date(from); d.setHours(0, 0, 0, 0); lectureQuery.date.$gte = d; }
+      if (to)   { const d = new Date(to);   d.setHours(23,59,59,999); lectureQuery.date.$lte = d; }
+    }
+
+    const lectures = await Lecture.find(lectureQuery).sort({ date: -1 });
+    const lectureIds = lectures.map(l => l.lectureId);
+    const lectureMap = Object.fromEntries(lectures.map(l => [l.lectureId, { lectureName: l.lectureName, date: l.date, course: l.course }]));
+
+    const feedbacks = await Feedback.find({ lectureId: { $in: lectureIds } }).sort({ submittedAt: -1 });
+    const enriched = feedbacks.map(f => ({
+      ...f.toObject(),
+      lectureName: lectureMap[f.lectureId]?.lectureName || f.lectureId,
+      lectureDate: lectureMap[f.lectureId]?.date,
+      lectureCourse: lectureMap[f.lectureId]?.course
+    }));
+
+    const count = feedbacks.length;
+    const avgRating = count > 0 ? parseFloat((feedbacks.reduce((s, f) => s + f.rating, 0) / count).toFixed(1)) : null;
+    const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    feedbacks.forEach(f => { distribution[f.rating]++; });
+
+    res.json({ success: true, facultyName: name, lectureCount: lectures.length, feedbacks: enriched, stats: { count, avgRating, distribution } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET /api/feedback/overview — lecture-wise, batch-wise, faculty-wise aggregations (admin)
 router.get('/overview', protect, async (req, res) => {
   try {
-    const lectures = await Lecture.find({ releaseFeedback: true }).sort({ date: -1 });
+    const { from, to } = req.query;
+    const lectureQuery = { releaseFeedback: true };
+    if (from || to) {
+      lectureQuery.date = {};
+      if (from) { const d = new Date(from); d.setHours(0, 0, 0, 0); lectureQuery.date.$gte = d; }
+      if (to)   { const d = new Date(to);   d.setHours(23,59,59,999); lectureQuery.date.$lte = d; }
+    }
+    const lectures = await Lecture.find(lectureQuery).sort({ date: -1 });
 
     const lectureWise = await Promise.all(lectures.map(async (lec) => {
       const feedbacks = await Feedback.find({ lectureId: lec.lectureId });
