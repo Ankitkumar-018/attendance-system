@@ -219,4 +219,56 @@ router.get('/daily', protect, async (req, res) => {
   }
 });
 
+// POST /api/feedback/export-to-sheets — admin
+router.post('/export-to-sheets', protect, async (req, res) => {
+  try {
+    const { lectureId } = req.body;
+    const SCRIPT_URL = process.env.APPS_SCRIPT_URL;
+    if (!SCRIPT_URL) return res.status(500).json({ success: false, message: 'APPS_SCRIPT_URL not configured in environment' });
+
+    const lecture = await Lecture.findOne({ lectureId });
+    if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
+
+    const feedbacks = await Feedback.find({ lectureId }).sort({ studentCode: 1 });
+    if (feedbacks.length === 0) return res.status(400).json({ success: false, message: 'No feedback responses to export' });
+
+    const d = new Date(lecture.date);
+    const day = d.getDate();
+    const month = d.toLocaleDateString('en-GB', { month: 'long' });
+    const sheetName = `${day} ${month} - ${lecture.lectureName} ${lecture.facultyName}`.substring(0, 100);
+
+    const LABELS = { 1: 'Poor', 2: 'Fair', 3: 'Average', 4: 'Good', 5: 'Excellent' };
+    const headers = ['Student Code', 'Name', 'Email', 'Course', 'Rating', 'Rating Label', 'Comment', 'Submitted At'];
+    const rows = feedbacks.map(f => [
+      f.studentCode,
+      f.studentName,
+      f.email,
+      f.course,
+      f.rating,
+      LABELS[f.rating] || '',
+      f.comment,
+      new Date(f.submittedAt).toLocaleString('en-IN')
+    ]);
+
+    const response = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheetName, headers, rows }),
+      redirect: 'follow'
+    });
+
+    const text = await response.text();
+    let result;
+    try { result = JSON.parse(text); } catch { result = { success: false, message: text }; }
+
+    if (result.success) {
+      res.json({ success: true, message: result.message, sheetName });
+    } else {
+      res.status(500).json({ success: false, message: result.message || 'Sheet update failed' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

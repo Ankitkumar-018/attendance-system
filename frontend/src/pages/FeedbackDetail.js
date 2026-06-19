@@ -4,7 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, Button, Divider, Grid, Rating, Avatar, LinearProgress
 } from '@mui/material';
-import { ArrowBack, Download, Star } from '@mui/icons-material';
+import { ArrowBack, Download, Star, GridOn } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -35,6 +35,8 @@ export default function FeedbackDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportMsg, setExportMsg] = useState(null);
 
   useEffect(() => {
     api.get(`/feedback/lecture/${lectureId}`)
@@ -63,6 +65,19 @@ export default function FeedbackDetail() {
     }
   };
 
+  const handleExportToSheets = async () => {
+    setExportLoading(true);
+    setExportMsg(null);
+    try {
+      const res = await api.post('/feedback/export-to-sheets', { lectureId });
+      setExportMsg({ type: 'success', text: `Exported to sheet: "${res.data.sheetName}"` });
+    } catch (e) {
+      setExportMsg({ type: 'error', text: e.response?.data?.message || 'Export failed' });
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>;
   if (error) return <Alert severity="error">{error}</Alert>;
   if (!data) return null;
@@ -71,14 +86,29 @@ export default function FeedbackDetail() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate('/feedback')} variant="outlined" size="small">
           Back to Dashboard
         </Button>
         <Button startIcon={<Download />} onClick={handleDownloadCSV} variant="contained" size="small" disabled={feedbacks.length === 0}>
           Download CSV
         </Button>
+        <Button
+          startIcon={exportLoading ? <CircularProgress size={16} color="inherit" /> : <GridOn />}
+          onClick={handleExportToSheets}
+          variant="contained"
+          size="small"
+          disabled={feedbacks.length === 0 || exportLoading}
+          sx={{ bgcolor: '#0f9d58', '&:hover': { bgcolor: '#0b8043' } }}
+        >
+          {exportLoading ? 'Exporting...' : 'Export to Google Sheet'}
+        </Button>
       </Box>
+      {exportMsg && (
+        <Alert severity={exportMsg.type} onClose={() => setExportMsg(null)} sx={{ mb: 2 }}>
+          {exportMsg.text}
+        </Alert>
+      )}
 
       {/* Lecture header */}
       <Card sx={{ mb: 3 }}>
