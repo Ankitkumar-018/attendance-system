@@ -219,6 +219,70 @@ router.get('/daily', protect, async (req, res) => {
   }
 });
 
+// POST /api/feedback/analyze/:lectureId — admin, AI analysis via Gemini
+router.post('/analyze/:lectureId', protect, async (req, res) => {
+  try {
+    const { lectureId } = req.params;
+    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+    const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
+    if (!GEMINI_KEY) return res.status(500).json({ success: false, message: 'GEMINI_API_KEY not configured in environment' });
+
+    const lecture = await Lecture.findOne({ lectureId });
+    if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
+
+    const feedbacks = await Feedback.find({ lectureId }).sort({ submittedAt: 1 });
+    if (feedbacks.length === 0) return res.status(400).json({ success: false, message: 'No feedback to analyze' });
+
+    const avgRating = (feedbacks.reduce((s, f) => s + f.rating, 0) / feedbacks.length).toFixed(1);
+    const dateStr = new Date(lecture.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const prompt = `You are an education quality analyst. Analyze the following student feedback for a class session.
+
+Lecture: ${lecture.lectureName}
+Faculty: ${lecture.facultyName}
+Date: ${dateStr}
+Average Rating: ${avgRating}/5
+Total Responses: ${feedbacks.length}
+
+Student Feedback:
+${feedbacks.map((f, i) => `${i + 1}. [Rating: ${f.rating}/5] "${f.comment}"`).join('\n')}
+
+Provide a structured analysis in the following JSON format only (no markdown, no extra text):
+{
+  "summary": "2-3 sentence overall summary of the session quality",
+  "strengths": ["strength 1", "strength 2", "strength 3"],
+  "concerns": ["concern 1", "concern 2", "concern 3"],
+  "recommendation": "One specific actionable recommendation for the faculty"
+}`;
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+        })
+      }
+    );
+
+    const geminiData = await geminiRes.json();
+    const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) return res.status(500).json({ success: false, message: 'Gemini returned empty response' });
+
+    const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
+    let analysis;
+    try { analysis = JSON.parse(cleaned); }
+    catch { return res.status(500).json({ success: false, message: 'Failed to parse AI response', raw: text }); }
+
+    res.json({ success: true, analysis, avgRating: parseFloat(avgRating), count: feedbacks.length });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/feedback/export-to-sheets — admin
 router.post('/export-to-sheets', protect, async (req, res) => {
   try {

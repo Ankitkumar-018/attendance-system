@@ -4,7 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, Button, Divider, Grid, Rating, Avatar, LinearProgress
 } from '@mui/material';
-import { ArrowBack, Download, Star, GridOn } from '@mui/icons-material';
+import { ArrowBack, Download, Star, GridOn, AutoAwesome, TrendingUp, Warning, Lightbulb } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -37,6 +37,9 @@ export default function FeedbackDetail() {
   const [error, setError] = useState('');
   const [exportLoading, setExportLoading] = useState(false);
   const [exportMsg, setExportMsg] = useState(null);
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   useEffect(() => {
     api.get(`/feedback/lecture/${lectureId}`)
@@ -62,6 +65,20 @@ export default function FeedbackDetail() {
       window.URL.revokeObjectURL(link.href);
     } catch {
       alert('Download failed. Please try again.');
+    }
+  };
+
+  const handleAiAnalysis = async () => {
+    setAiLoading(true);
+    setAiError('');
+    setAiAnalysis(null);
+    try {
+      const res = await api.post(`/feedback/analyze/${lectureId}`);
+      setAiAnalysis(res.data.analysis);
+    } catch (e) {
+      setAiError(e.response?.data?.message || 'AI analysis failed');
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -102,6 +119,16 @@ export default function FeedbackDetail() {
           sx={{ bgcolor: '#0f9d58', '&:hover': { bgcolor: '#0b8043' } }}
         >
           {exportLoading ? 'Exporting...' : 'Export to Google Sheet'}
+        </Button>
+        <Button
+          startIcon={aiLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
+          onClick={handleAiAnalysis}
+          variant="contained"
+          size="small"
+          disabled={feedbacks.length === 0 || aiLoading}
+          sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+        >
+          {aiLoading ? 'Analyzing...' : 'AI Analysis'}
         </Button>
       </Box>
       {exportMsg && (
@@ -155,6 +182,68 @@ export default function FeedbackDetail() {
           </Card>
         </Grid>
       </Grid>
+
+      {/* AI Analysis */}
+      {aiError && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setAiError('')}>{aiError}</Alert>}
+      {aiAnalysis && (
+        <Card sx={{ mb: 3, border: '1px solid #7c3aed22', bgcolor: '#faf5ff' }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
+              <AutoAwesome sx={{ color: '#7c3aed' }} />
+              <Typography variant="h6" fontWeight={700} color="#7c3aed">AI Feedback Analysis</Typography>
+              <Chip label="Gemini" size="small" sx={{ bgcolor: '#7c3aed', color: '#fff', ml: 1 }} />
+            </Box>
+
+            <Typography variant="body1" sx={{ mb: 3, color: 'text.primary', lineHeight: 1.7 }}>
+              {aiAnalysis.summary}
+            </Typography>
+
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: '#f0fdf4', borderRadius: 2, border: '1px solid #bbf7d0', height: '100%' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <TrendingUp sx={{ color: '#16a34a', fontSize: 20 }} />
+                    <Typography variant="subtitle2" fontWeight={700} color="#16a34a">Strengths</Typography>
+                  </Box>
+                  {(aiAnalysis.strengths || []).map((s, i) => (
+                    <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                      <Typography sx={{ color: '#16a34a', fontWeight: 700, fontSize: 16, lineHeight: 1.4 }}>•</Typography>
+                      <Typography variant="body2" color="text.secondary">{s}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: '#fff7ed', borderRadius: 2, border: '1px solid #fed7aa', height: '100%' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <Warning sx={{ color: '#ea580c', fontSize: 20 }} />
+                    <Typography variant="subtitle2" fontWeight={700} color="#ea580c">Major Concerns</Typography>
+                  </Box>
+                  {(aiAnalysis.concerns || []).map((c, i) => (
+                    <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                      <Typography sx={{ color: '#ea580c', fontWeight: 700, fontSize: 16, lineHeight: 1.4 }}>•</Typography>
+                      <Typography variant="body2" color="text.secondary">{c}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: '#eff6ff', borderRadius: 2, border: '1px solid #bfdbfe', height: '100%' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <Lightbulb sx={{ color: '#2563eb', fontSize: 20 }} />
+                    <Typography variant="subtitle2" fontWeight={700} color="#2563eb">Recommendation</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                    {aiAnalysis.recommendation}
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Individual responses */}
       <Card>
