@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import {
   RateReview, CalendarToday, Visibility, Close, Star, FilterList,
-  EmojiEvents, Group, ThumbUp, TrendingUp
+  EmojiEvents, Group, ThumbUp, TrendingUp, AutoAwesome
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -51,6 +51,9 @@ export default function FeedbackDashboard() {
   const [facultyDetail, setFacultyDetail] = useState(null);
   const [facultyLoading, setFacultyLoading] = useState(false);
   const [ratingFilter, setRatingFilter] = useState(0);
+  const [facultyAiSummary, setFacultyAiSummary] = useState('');
+  const [facultyAiLoading, setFacultyAiLoading] = useState(false);
+  const [facultyAiError, setFacultyAiError] = useState('');
 
   // Use refs to read current date values in callbacks without stale closure
   const fromRef = useRef(overviewFrom);
@@ -86,11 +89,31 @@ export default function FeedbackDashboard() {
 
   const handleViewLecture = (lectureId) => navigate(`/feedback/lecture/${lectureId}`);
 
+  const handleFacultyAiSummary = async () => {
+    setFacultyAiLoading(true);
+    setFacultyAiError('');
+    setFacultyAiSummary('');
+    try {
+      const r = await api.post('/feedback/analyze/faculty', {
+        name: facultyDialog,
+        from: fromRef.current || undefined,
+        to: toRef.current || undefined
+      });
+      setFacultyAiSummary(r.data.summary);
+    } catch (e) {
+      setFacultyAiError(e.response?.data?.message || 'AI analysis failed');
+    } finally {
+      setFacultyAiLoading(false);
+    }
+  };
+
   const openFacultyDialog = async (name) => {
     setFacultyDialog(name);
     setFacultyDetail(null);
     setFacultyLoading(true);
     setRatingFilter(0);
+    setFacultyAiSummary('');
+    setFacultyAiError('');
     try {
       const p = new URLSearchParams({ name });
       if (fromRef.current) p.set('from', fromRef.current);
@@ -480,6 +503,35 @@ export default function FeedbackDashboard() {
                       </Box>
                     </Grid>
                   </Grid>
+
+                  {/* AI Summary */}
+                  <Box sx={{ mb: 2.5 }}>
+                    <Button
+                      startIcon={facultyAiLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
+                      onClick={handleFacultyAiSummary}
+                      variant="contained"
+                      size="small"
+                      disabled={facultyAiLoading || (facultyDetail?.stats?.count === 0)}
+                      sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+                    >
+                      {facultyAiLoading ? 'Analyzing...' : 'AI Summary'}
+                    </Button>
+                    {facultyAiError && (
+                      <Alert severity="error" sx={{ mt: 1.5 }} onClose={() => setFacultyAiError('')}>{facultyAiError}</Alert>
+                    )}
+                    {facultyAiSummary && (
+                      <Box sx={{ mt: 1.5, p: 2, bgcolor: '#faf5ff', borderRadius: 2, border: '1px solid #7c3aed33' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                          <AutoAwesome sx={{ color: '#7c3aed', fontSize: 18 }} />
+                          <Typography variant="subtitle2" fontWeight={700} color="#7c3aed">AI Summary</Typography>
+                          <Chip label="Gemini" size="small" sx={{ bgcolor: '#7c3aed', color: '#fff' }} />
+                        </Box>
+                        <Typography variant="body2" sx={{ lineHeight: 1.9, color: 'text.primary' }}>
+                          {facultyAiSummary}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
 
                   {/* Rating filter chips */}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5, flexWrap: 'wrap' }}>

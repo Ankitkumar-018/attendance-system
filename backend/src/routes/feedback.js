@@ -219,6 +219,75 @@ router.get('/daily', protect, async (req, res) => {
   }
 });
 
+// POST /api/feedback/analyze/faculty — admin, AI summary for a faculty member
+router.post('/analyze/faculty', protect, async (req, res) => {
+  try {
+    const { name, from, to } = req.body;
+    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+    const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
+    if (!name) return res.status(400).json({ success: false, message: 'Faculty name required' });
+    if (!GEMINI_KEY) return res.status(500).json({ success: false, message: 'GEMINI_API_KEY not configured in environment' });
+
+    const lectureQuery = { facultyName: name, releaseFeedback: true };
+    if (from || to) {
+      lectureQuery.date = {};
+      if (from) { const d = new Date(from); d.setHours(0, 0, 0, 0); lectureQuery.date.$gte = d; }
+      if (to)   { const d = new Date(to);   d.setHours(23, 59, 59, 999); lectureQuery.date.$lte = d; }
+    }
+
+    const lectures = await Lecture.find(lectureQuery);
+    const lectureIds = lectures.map(l => l.lectureId);
+    const lectureMap = Object.fromEntries(lectures.map(l => [l.lectureId, l.lectureName]));
+
+    const feedbacks = await Feedback.find({ lectureId: { $in: lectureIds } }).sort({ submittedAt: 1 });
+    if (feedbacks.length === 0) return res.status(400).json({ success: false, message: 'No feedback to analyze' });
+
+    const avgRating = (feedbacks.reduce((s, f) => s + f.rating, 0) / feedbacks.length).toFixed(1);
+    const allResponses = feedbacks.map((f, i) =>
+      `${i + 1}. [${f.rating}/5] [Lecture: ${lectureMap[f.lectureId] || f.lectureId}] "${f.comment}"`
+    ).join('\n');
+
+    const prompt = `You are an education quality analyst. Below are all student feedback responses for faculty member "${name}".
+
+Faculty: ${name}
+Total Lectures: ${lectures.length}
+Average Rating: ${avgRating}/5
+Total Responses: ${feedbacks.length}
+
+All Student Responses:
+${allResponses}
+
+Read every response above and give a clear summary covering:
+- Overall performance of this faculty member
+- What students consistently liked about their teaching
+- What concerns or issues students raised
+- One actionable suggestion for improvement
+
+Write in plain English, 4-6 sentences total. Do not use bullet points or headings.`;
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.4, maxOutputTokens: 512 }
+        })
+      }
+    );
+
+    const geminiData = await geminiRes.json();
+    const summary = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!summary) return res.status(500).json({ success: false, message: 'Gemini returned empty response' });
+
+    res.json({ success: true, summary });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/feedback/analyze/:lectureId — admin, AI summary via Gemini
 router.post('/analyze/:lectureId', protect, async (req, res) => {
   try {
