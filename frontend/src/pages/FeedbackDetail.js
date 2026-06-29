@@ -193,9 +193,11 @@ export default function FeedbackDetail() {
               <Typography variant="h6" fontWeight={700} color="#7c3aed">AI Summary</Typography>
               <Chip label="Gemini" size="small" sx={{ bgcolor: '#7c3aed', color: '#fff', ml: 1 }} />
             </Box>
-            <Typography variant="body1" sx={{ color: 'text.primary', lineHeight: 1.9, fontSize: 15 }}>
-              {aiAnalysis}
-            </Typography>
+            {aiAnalysis.split('\n').filter(p => p.trim()).map((para, i) => (
+              <Typography key={i} variant="body1" sx={{ color: 'text.primary', lineHeight: 1.9, fontSize: 15, mb: 1.5 }}>
+                {para}
+              </Typography>
+            ))}
           </CardContent>
         </Card>
       )}

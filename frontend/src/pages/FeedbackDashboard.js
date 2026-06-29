@@ -526,9 +526,11 @@ export default function FeedbackDashboard() {
                           <Typography variant="subtitle2" fontWeight={700} color="#7c3aed">AI Summary</Typography>
                           <Chip label="Gemini" size="small" sx={{ bgcolor: '#7c3aed', color: '#fff' }} />
                         </Box>
-                        <Typography variant="body2" sx={{ lineHeight: 1.9, color: 'text.primary' }}>
-                          {facultyAiSummary}
-                        </Typography>
+                        {facultyAiSummary.split('\n').filter(p => p.trim()).map((para, i) => (
+                          <Typography key={i} variant="body2" sx={{ lineHeight: 1.9, color: 'text.primary', mb: 1 }}>
+                            {para}
+                          </Typography>
+                        ))}
                       </Box>
                     )}
                   </Box>

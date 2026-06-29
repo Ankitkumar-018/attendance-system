@@ -244,27 +244,54 @@ router.post('/analyze/faculty', protect, async (req, res) => {
     if (feedbacks.length === 0) return res.status(400).json({ success: false, message: 'No feedback to analyze' });
 
     const avgRating = (feedbacks.reduce((s, f) => s + f.rating, 0) / feedbacks.length).toFixed(1);
-    const allResponses = feedbacks.map((f, i) =>
-      `${i + 1}. [${f.rating}/5] [Lecture: ${lectureMap[f.lectureId] || f.lectureId}] "${f.comment}"`
-    ).join('\n');
+    const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    feedbacks.forEach(f => dist[f.rating]++);
+    const total = feedbacks.length;
+    const satisfiedPct = Math.round(((dist[4] + dist[5]) / total) * 100);
+    const criticalPct  = Math.round(((dist[1] + dist[2]) / total) * 100);
 
-    const prompt = `You are an education quality analyst. Below are all student feedback responses for faculty member "${name}".
+    const lowRated  = feedbacks.filter(f => f.rating <= 2);
+    const midRated  = feedbacks.filter(f => f.rating === 3);
+    const highRated = feedbacks.filter(f => f.rating >= 4);
 
-Faculty: ${name}
-Total Lectures: ${lectures.length}
-Average Rating: ${avgRating}/5
-Total Responses: ${feedbacks.length}
+    const formatResponses = (arr) =>
+      arr.map((f, i) => `  ${i + 1}. [${f.rating}★] [${lectureMap[f.lectureId] || f.lectureId}] "${f.comment}"`).join('\n');
 
-All Student Responses:
-${allResponses}
+    const prompt = `You are a senior education quality analyst reviewing student feedback for a faculty member. Your job is to produce a thorough, critical, and honest analysis that helps the institution and the faculty member understand exactly how they are performing.
 
-Read every response above and give a clear summary covering:
-- Overall performance of this faculty member
-- What students consistently liked about their teaching
-- What concerns or issues students raised
-- One actionable suggestion for improvement
+=== FACULTY PROFILE ===
+Name: ${name}
+Total Lectures Reviewed: ${lectures.length}
+Total Student Responses: ${total}
+Average Rating: ${avgRating} / 5
+Satisfied Students (4-5★): ${dist[4] + dist[5]} (${satisfiedPct}%)
+Neutral Students (3★): ${dist[3]}
+Dissatisfied Students (1-2★): ${dist[1] + dist[2]} (${criticalPct}%)
+Rating Breakdown: 5★=${dist[5]}, 4★=${dist[4]}, 3★=${dist[3]}, 2★=${dist[2]}, 1★=${dist[1]}
 
-Write in plain English, 4-6 sentences total. Do not use bullet points or headings.`;
+=== CRITICAL / NEGATIVE RESPONSES (1-2★) — ${lowRated.length} responses ===
+${lowRated.length > 0 ? formatResponses(lowRated) : '  None'}
+
+=== NEUTRAL RESPONSES (3★) — ${midRated.length} responses ===
+${midRated.length > 0 ? formatResponses(midRated) : '  None'}
+
+=== POSITIVE RESPONSES (4-5★) — ${highRated.length} responses ===
+${formatResponses(highRated)}
+
+=== YOUR TASK ===
+Write a detailed, multi-paragraph analysis covering ALL of the following:
+
+Paragraph 1 — OVERALL PERFORMANCE: What does the data say about this faculty member overall? Mention the average rating, satisfaction rate, and general student sentiment.
+
+Paragraph 2 — CRITICAL ISSUES: What specific problems are dissatisfied and neutral students raising? Quote or reference actual student comments. Be direct — do not soften critical findings. Identify recurring complaints or patterns.
+
+Paragraph 3 — STRENGTHS: What are students genuinely praising? What is this faculty member doing well consistently? Reference specific comments.
+
+Paragraph 4 — PATTERNS & INSIGHTS: Are there any patterns across different lectures? Do certain lectures get better or worse ratings? Is there improvement or decline over time?
+
+Paragraph 5 — RECOMMENDATIONS: Give 2-3 specific, actionable recommendations for improvement based on what students said. Be concrete — not generic advice.
+
+Write in clear professional English. Each paragraph should be 3-5 sentences. Do not use bullet points or numbered lists — write in prose paragraphs only.`;
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`,
@@ -273,7 +300,7 @@ Write in plain English, 4-6 sentences total. Do not use bullet points or heading
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 512 }
+          generationConfig: { temperature: 0.3, maxOutputTokens: 1500 }
         })
       }
     );
@@ -306,26 +333,56 @@ router.post('/analyze/:lectureId', protect, async (req, res) => {
     const avgRating = (feedbacks.reduce((s, f) => s + f.rating, 0) / feedbacks.length).toFixed(1);
     const dateStr = new Date(lecture.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const allResponses = feedbacks.map((f, i) => `${i + 1}. [${f.rating}/5] "${f.comment}"`).join('\n');
+    const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    feedbacks.forEach(f => dist[f.rating]++);
+    const total = feedbacks.length;
+    const satisfiedPct = Math.round(((dist[4] + dist[5]) / total) * 100);
+    const criticalPct  = Math.round(((dist[1] + dist[2]) / total) * 100);
 
-    const prompt = `You are an education quality analyst. Below are all student feedback responses for a class session.
+    const lowRated  = feedbacks.filter(f => f.rating <= 2);
+    const midRated  = feedbacks.filter(f => f.rating === 3);
+    const highRated = feedbacks.filter(f => f.rating >= 4);
 
+    const fmt = (arr) => arr.map((f, i) => `  ${i + 1}. [${f.rating}★] "${f.comment}"`).join('\n');
+
+    const prompt = `You are a senior education quality analyst reviewing student feedback for a single class session. Produce a thorough, critical, and honest analysis.
+
+=== SESSION DETAILS ===
 Lecture: ${lecture.lectureName}
 Faculty: ${lecture.facultyName}
+Course: ${lecture.course}
 Date: ${dateStr}
-Average Rating: ${avgRating}/5
-Total Responses: ${feedbacks.length}
+Time: ${lecture.startTime} – ${lecture.endTime}
 
-All Student Responses:
-${allResponses}
+=== FEEDBACK STATISTICS ===
+Total Responses: ${total}
+Average Rating: ${avgRating} / 5
+Satisfied Students (4-5★): ${dist[4] + dist[5]} (${satisfiedPct}%)
+Neutral Students (3★): ${dist[3]}
+Dissatisfied Students (1-2★): ${dist[1] + dist[2]} (${criticalPct}%)
+Rating Breakdown: 5★=${dist[5]}, 4★=${dist[4]}, 3★=${dist[3]}, 2★=${dist[2]}, 1★=${dist[1]}
 
-Read every response above and give a clear summary covering:
-- Overall impression of the session
-- What students liked
-- What concerns or issues students raised
-- One actionable suggestion for the faculty
+=== CRITICAL / NEGATIVE RESPONSES (1-2★) — ${lowRated.length} responses ===
+${lowRated.length > 0 ? fmt(lowRated) : '  None'}
 
-Write in plain English, 4-6 sentences total. Do not use bullet points or headings.`;
+=== NEUTRAL RESPONSES (3★) — ${midRated.length} responses ===
+${midRated.length > 0 ? fmt(midRated) : '  None'}
+
+=== POSITIVE RESPONSES (4-5★) — ${highRated.length} responses ===
+${fmt(highRated)}
+
+=== YOUR TASK ===
+Write a detailed, multi-paragraph analysis covering ALL of the following:
+
+Paragraph 1 — OVERALL SESSION QUALITY: Summarize the session quality based on the numbers and student sentiment. Mention satisfaction rate and average rating in context.
+
+Paragraph 2 — CRITICAL ISSUES: What are the dissatisfied and neutral students complaining about? Quote or reference specific comments. Be direct and do not downplay negative feedback. Identify if there are recurring themes in criticism.
+
+Paragraph 3 — WHAT WORKED WELL: What did satisfied students specifically praise? What aspects of teaching or content delivery resonated positively?
+
+Paragraph 4 — RECOMMENDATIONS: Give 2-3 specific, actionable steps the faculty should take before the next session based directly on what students said. Be concrete and practical.
+
+Write in clear professional English. Each paragraph should be 3-5 sentences. Prose paragraphs only — no bullet points or numbered lists.`;
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`,
@@ -334,7 +391,7 @@ Write in plain English, 4-6 sentences total. Do not use bullet points or heading
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 512 }
+          generationConfig: { temperature: 0.3, maxOutputTokens: 1500 }
         })
       }
     );
