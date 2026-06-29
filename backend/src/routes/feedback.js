@@ -219,7 +219,7 @@ router.get('/daily', protect, async (req, res) => {
   }
 });
 
-// POST /api/feedback/analyze/:lectureId — admin, AI analysis via Gemini
+// POST /api/feedback/analyze/:lectureId — admin, AI summary via Gemini
 router.post('/analyze/:lectureId', protect, async (req, res) => {
   try {
     const { lectureId } = req.params;
@@ -237,7 +237,9 @@ router.post('/analyze/:lectureId', protect, async (req, res) => {
     const avgRating = (feedbacks.reduce((s, f) => s + f.rating, 0) / feedbacks.length).toFixed(1);
     const dateStr = new Date(lecture.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const prompt = `You are an education quality analyst. Analyze the following student feedback for a class session.
+    const allResponses = feedbacks.map((f, i) => `${i + 1}. [${f.rating}/5] "${f.comment}"`).join('\n');
+
+    const prompt = `You are an education quality analyst. Below are all student feedback responses for a class session.
 
 Lecture: ${lecture.lectureName}
 Faculty: ${lecture.facultyName}
@@ -245,16 +247,16 @@ Date: ${dateStr}
 Average Rating: ${avgRating}/5
 Total Responses: ${feedbacks.length}
 
-Student Feedback:
-${feedbacks.map((f, i) => `${i + 1}. [Rating: ${f.rating}/5] "${f.comment}"`).join('\n')}
+All Student Responses:
+${allResponses}
 
-Provide a structured analysis in the following JSON format only (no markdown, no extra text):
-{
-  "summary": "2-3 sentence overall summary of the session quality",
-  "strengths": ["strength 1", "strength 2", "strength 3"],
-  "concerns": ["concern 1", "concern 2", "concern 3"],
-  "recommendation": "One specific actionable recommendation for the faculty"
-}`;
+Read every response above and give a clear summary covering:
+- Overall impression of the session
+- What students liked
+- What concerns or issues students raised
+- One actionable suggestion for the faculty
+
+Write in plain English, 4-6 sentences total. Do not use bullet points or headings.`;
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`,
@@ -263,21 +265,16 @@ Provide a structured analysis in the following JSON format only (no markdown, no
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+          generationConfig: { temperature: 0.4, maxOutputTokens: 512 }
         })
       }
     );
 
     const geminiData = await geminiRes.json();
-    const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return res.status(500).json({ success: false, message: 'Gemini returned empty response' });
+    const summary = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!summary) return res.status(500).json({ success: false, message: 'Gemini returned empty response' });
 
-    const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
-    let analysis;
-    try { analysis = JSON.parse(cleaned); }
-    catch { return res.status(500).json({ success: false, message: 'Failed to parse AI response', raw: text }); }
-
-    res.json({ success: true, analysis, avgRating: parseFloat(avgRating), count: feedbacks.length });
+    res.json({ success: true, summary });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
