@@ -6,7 +6,8 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Avatar, LinearProgress
 } from '@mui/material';
 import {
-  RateReview, CalendarToday, Visibility, Close, Star, FilterList
+  RateReview, CalendarToday, Visibility, Close, Star, FilterList,
+  EmojiEvents, Group, ThumbUp, TrendingUp
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -275,13 +276,109 @@ export default function FeedbackDashboard() {
         {tab === 3 && (
           <Box>
             <DateRangeBar />
+
+            {overviewLoading && <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>}
+            {overviewError && <Alert severity="error" sx={{ m: 2 }}>{overviewError}</Alert>}
+
+            {/* Faculty Dashboard Cards */}
+            {overview && !overviewLoading && (() => {
+              const all = overview.facultyWise;
+              const withData = all.filter(f => f.count > 0);
+              const totalResponses = withData.reduce((s, f) => s + f.count, 0);
+              const overallAvg = withData.length > 0
+                ? (withData.reduce((s, f) => s + f.avgRating * f.count, 0) / totalResponses).toFixed(1)
+                : null;
+              const sorted = [...withData].sort((a, b) => b.avgRating - a.avgRating);
+              const topRated = sorted[0] || null;
+              const mostActive = [...withData].sort((a, b) => b.count - a.count)[0] || null;
+              const excellent = withData.filter(f => f.avgRating >= 4.5).length;
+
+              return (
+                <Box sx={{ px: 3, pt: 3, pb: 1 }}>
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={6} sm={3}>
+                      <Box sx={{ p: 2.5, bgcolor: '#eff6ff', borderRadius: 2, textAlign: 'center', border: '1px solid #bfdbfe' }}>
+                        <Group sx={{ color: '#2563eb', mb: 0.5 }} />
+                        <Typography variant="h4" fontWeight={700} color="#2563eb">{all.length}</Typography>
+                        <Typography variant="caption" color="text.secondary">Total Faculty</Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Box sx={{ p: 2.5, bgcolor: '#f0fdf4', borderRadius: 2, textAlign: 'center', border: '1px solid #bbf7d0' }}>
+                        <TrendingUp sx={{ color: '#16a34a', mb: 0.5 }} />
+                        <Typography variant="h4" fontWeight={700} color="#16a34a">{overallAvg ?? '—'}</Typography>
+                        <Typography variant="caption" color="text.secondary">Overall Avg Rating</Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Box sx={{ p: 2.5, bgcolor: '#fff7ed', borderRadius: 2, textAlign: 'center', border: '1px solid #fed7aa' }}>
+                        <ThumbUp sx={{ color: '#ea580c', mb: 0.5 }} />
+                        <Typography variant="h4" fontWeight={700} color="#ea580c">{totalResponses}</Typography>
+                        <Typography variant="caption" color="text.secondary">Total Responses</Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Box sx={{ p: 2.5, bgcolor: '#fefce8', borderRadius: 2, textAlign: 'center', border: '1px solid #fde68a' }}>
+                        <EmojiEvents sx={{ color: '#d97706', mb: 0.5 }} />
+                        <Typography variant="h4" fontWeight={700} color="#d97706">{excellent}</Typography>
+                        <Typography variant="caption" color="text.secondary">Excellent (≥ 4.5★)</Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+
+                  {/* Top performers highlight */}
+                  {withData.length > 0 && (
+                    <Grid container spacing={2} sx={{ mb: 3 }}>
+                      {topRated && (
+                        <Grid item xs={12} sm={6}>
+                          <Box
+                            sx={{ p: 2, bgcolor: '#fefce8', borderRadius: 2, border: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer', '&:hover': { bgcolor: '#fef9c3' } }}
+                            onClick={() => openFacultyDialog(topRated.facultyName)}
+                          >
+                            <EmojiEvents sx={{ color: '#d97706', fontSize: 36 }} />
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>Top Rated Faculty</Typography>
+                              <Typography variant="subtitle1" fontWeight={700}>{topRated.facultyName}</Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Rating value={topRated.avgRating} precision={0.1} readOnly size="small" />
+                                <Typography variant="body2" fontWeight={700} color={starColor(topRated.avgRating)}>{topRated.avgRating}</Typography>
+                                <Typography variant="caption" color="text.secondary">({topRated.count} responses)</Typography>
+                              </Box>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                      {mostActive && mostActive.facultyName !== topRated?.facultyName && (
+                        <Grid item xs={12} sm={6}>
+                          <Box
+                            sx={{ p: 2, bgcolor: '#eff6ff', borderRadius: 2, border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer', '&:hover': { bgcolor: '#dbeafe' } }}
+                            onClick={() => openFacultyDialog(mostActive.facultyName)}
+                          >
+                            <Group sx={{ color: '#2563eb', fontSize: 36 }} />
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>Most Responses</Typography>
+                              <Typography variant="subtitle1" fontWeight={700}>{mostActive.facultyName}</Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Rating value={mostActive.avgRating} precision={0.1} readOnly size="small" />
+                                <Typography variant="body2" fontWeight={700} color={starColor(mostActive.avgRating)}>{mostActive.avgRating}</Typography>
+                                <Typography variant="caption" color="text.secondary">({mostActive.count} responses)</Typography>
+                              </Box>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  )}
+                </Box>
+              );
+            })()}
+
+            <Divider />
             <Box sx={{ px: 3, pt: 2, pb: 1 }}>
-              <Typography variant="subtitle1" fontWeight={600}>Overall Feedback by Faculty</Typography>
+              <Typography variant="subtitle1" fontWeight={600}>All Faculty</Typography>
               <Typography variant="body2" color="text.secondary">Click any row to view individual student feedback</Typography>
             </Box>
             <Divider />
-            {overviewLoading && <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>}
-            {overviewError && <Alert severity="error" sx={{ m: 2 }}>{overviewError}</Alert>}
             {overview && !overviewLoading && (
               <TableContainer><Table>
                 <TableHead><TableRow>
